@@ -1,6 +1,6 @@
 # NX779J Recoveries Kitchen
 
-Build kitchen for **TWRP**, **OrangeFox**, and **PitchBlack (PBRP)** recovery images for the **Nubia RedMagic 10 Air (NX779J)** — Snapdragon 8 Elite (SM8650), Android 15/16, Virtual A/B.
+Build kitchen for **TWRP**, **OrangeFox**, and **PitchBlack (PBRP)** recovery images for the **Nubia RedMagic 10 Air (NX779J)** — Snapdragon 8 Gen 3 (SM8650), Android 15/16, Virtual A/B.
 
 ## Requirements
 

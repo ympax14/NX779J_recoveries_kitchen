@@ -4,7 +4,7 @@
 |---|---|
 | **Device** | Nubia RedMagic 10 Air |
 | **Codename** | NX779J |
-| **SoC** | Qualcomm Snapdragon 8 Elite (SM8650 / pineapple) |
+| **SoC** | Qualcomm Snapdragon 8 Gen 3 (SM8650 / pineapple) |
 | **Android** | 16 (API 36) |
 | **Partition scheme** | Virtual A/B + dynamic partitions |
 | **Encryption** | Hardware-wrapped key FBE + metadata encryption |

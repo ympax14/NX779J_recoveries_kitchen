@@ -1,6 +1,6 @@
 # Android fstab file.
 # Device: Nubia RedMagic 10 Air (NX779J)
-# Platform: Snapdragon 8 Elite (sun) / Android 15
+# Platform: Snapdragon 8 Gen 3 (sun) / Android 15
 # Encryption: ICE inline crypto / FBE policy 2
 
 #<src>                                                   <mnt_point>          <type>   <mnt_flags and options>                                                                                                                    <fs_mgr_flags>
