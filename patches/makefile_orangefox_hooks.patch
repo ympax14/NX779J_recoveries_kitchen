@@ -1,14 +1,11 @@
 diff --git a/core/Makefile b/core/Makefile
-index 491f7bc..806844a 100644
+index 491f7bc..3dd936a 100644
 --- a/core/Makefile
 +++ b/core/Makefile
-@@ -2906,8 +2906,50 @@ else # BUILDING_RECOVERY_IMAGE
- RECOVERY_RESOURCE_ZIP :=
- endif # BUILDING_RECOVERY_IMAGE
+@@ -2877,6 +2877,32 @@ endif # BOARD_USES_RECOVERY_AS_BOOT
  
-+# OrangeFox pre-build hook — creates fox_env.sh and modifies ramdisk before mkbootimg
-+.PHONY: _fox_pre
-+_fox_pre:
+ ifndef BOARD_CUSTOM_BOOTIMG_MK
+ $(INSTALLED_RECOVERYIMAGE_TARGET): $(recoveryimage-deps) $(RECOVERYIMAGE_EXTRA_DEPS)
 +	@if [ -z "$(NOT_ORANGEFOX)" ] && [ -f "vendor/recovery/OrangeFox_A16.sh" ]; then \
 +	  mkdir -p /tmp/$(FOX_BUILD_DEVICE) && \
 +	  { \
@@ -35,9 +32,11 @@ index 491f7bc..806844a 100644
 +	    "INTERNAL_RECOVERYIMAGE_ARGS=$(INTERNAL_RECOVERYIMAGE_ARGS)" \
 +	    "INTERNAL_MKBOOTIMG_VERSION_ARGS=$(INTERNAL_MKBOOTIMG_VERSION_ARGS)" ; \
 +	fi
-+
-+$(INSTALLED_RECOVERYIMAGE_TARGET): | _fox_pre
-+
+ 	$(call build-recoveryimage-target, $@, \
+ 	  $(if $(filter true, $(BOARD_EXCLUDE_KERNEL_FROM_RECOVERY_IMAGE)),, $(recovery_kernel)))
+ else
+@@ -2908,6 +2934,16 @@ endif # BUILDING_RECOVERY_IMAGE
+ 
  .PHONY: recoveryimage
  recoveryimage: $(INSTALLED_RECOVERYIMAGE_TARGET) $(RECOVERY_RESOURCE_ZIP)
 +	@if [ -z "$(NOT_ORANGEFOX)" ] && [ -f "vendor/recovery/OrangeFox_A16.sh" ]; then \
