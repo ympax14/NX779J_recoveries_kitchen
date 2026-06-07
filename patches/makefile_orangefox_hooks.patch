@@ -1,0 +1,55 @@
+diff --git a/core/Makefile b/core/Makefile
+index 491f7bc..806844a 100644
+--- a/core/Makefile
++++ b/core/Makefile
+@@ -2906,8 +2906,50 @@ else # BUILDING_RECOVERY_IMAGE
+ RECOVERY_RESOURCE_ZIP :=
+ endif # BUILDING_RECOVERY_IMAGE
+ 
++# OrangeFox pre-build hook — creates fox_env.sh and modifies ramdisk before mkbootimg
++.PHONY: _fox_pre
++_fox_pre:
++	@if [ -z "$(NOT_ORANGEFOX)" ] && [ -f "vendor/recovery/OrangeFox_A16.sh" ]; then \
++	  mkdir -p /tmp/$(FOX_BUILD_DEVICE) && \
++	  { \
++	    echo 'export TARGET_PRODUCT="$(TARGET_PRODUCT)"' ; \
++	    echo 'export TARGET_RECOVERY_ROOT_OUT="$(TARGET_RECOVERY_ROOT_OUT)"' ; \
++	    echo 'export OUT="$(PRODUCT_OUT)"' ; \
++	    echo 'export MKBOOTFS="$(MKBOOTFS)"' ; \
++	    echo 'export TARGET_OUT="$(TARGET_OUT)"' ; \
++	    echo 'export COMPRESSION_COMMAND="$(COMPRESSION_COMMAND)"' ; \
++	    echo 'export BOARD_USES_RECOVERY_AS_BOOT="$(BOARD_USES_RECOVERY_AS_BOOT)"' ; \
++	    echo 'export INTERNAL_RECOVERYIMAGE_ARGS="$(INTERNAL_RECOVERYIMAGE_ARGS)"' ; \
++	    echo 'export INTERNAL_MKBOOTIMG_VERSION_ARGS="$(INTERNAL_MKBOOTIMG_VERSION_ARGS)"' ; \
++	    echo 'export BOARD_MKBOOTIMG_ARGS="$(BOARD_MKBOOTIMG_ARGS)"' ; \
++	  } > /tmp/$(FOX_BUILD_DEVICE)/fox_env.sh && \
++	  export FOX_VENDOR_CMD=Fox_Before_Recovery_Image && \
++	  bash vendor/recovery/OrangeFox_A16.sh \
++	    "FOX_VENDOR_CMD=Fox_Before_Recovery_Image" \
++	    "MKBOOTFS=$(MKBOOTFS)" \
++	    "TARGET_OUT=$(TARGET_OUT)" \
++	    "TARGET_RECOVERY_ROOT_OUT=$(TARGET_RECOVERY_ROOT_OUT)" \
++	    "COMPRESSION_COMMAND=$(COMPRESSION_COMMAND)" \
++	    "BOARD_USES_RECOVERY_AS_BOOT=$(BOARD_USES_RECOVERY_AS_BOOT)" \
++	    "BOARD_MKBOOTIMG_ARGS=$(BOARD_MKBOOTIMG_ARGS)" \
++	    "INTERNAL_RECOVERYIMAGE_ARGS=$(INTERNAL_RECOVERYIMAGE_ARGS)" \
++	    "INTERNAL_MKBOOTIMG_VERSION_ARGS=$(INTERNAL_MKBOOTIMG_VERSION_ARGS)" ; \
++	fi
++
++$(INSTALLED_RECOVERYIMAGE_TARGET): | _fox_pre
++
+ .PHONY: recoveryimage
+ recoveryimage: $(INSTALLED_RECOVERYIMAGE_TARGET) $(RECOVERY_RESOURCE_ZIP)
++	@if [ -z "$(NOT_ORANGEFOX)" ] && [ -f "vendor/recovery/OrangeFox_A16.sh" ]; then \
++	  export FOX_VENDOR_CMD=Fox_After_Recovery_Image && \
++	  bash vendor/recovery/OrangeFox_A16.sh \
++	    "FOX_VENDOR_CMD=Fox_After_Recovery_Image" \
++	    "INSTALLED_RECOVERYIMAGE_TARGET=$(INSTALLED_RECOVERYIMAGE_TARGET)" \
++	    "INSTALLED_BOOTIMAGE_TARGET=$(INSTALLED_BOOTIMAGE_TARGET)" \
++	    "INSTALLED_VENDOR_BOOTIMAGE_TARGET=$(INSTALLED_VENDOR_BOOTIMAGE_TARGET)" \
++	    "TARGET_RECOVERY_ROOT_OUT=$(TARGET_RECOVERY_ROOT_OUT)" \
++	    "OUT=$(PRODUCT_OUT)" ; \
++	fi
+ 
+ ifneq ($(BOARD_NAND_PAGE_SIZE),)
+ $(error MTD device is no longer supported and thus BOARD_NAND_PAGE_SIZE is deprecated.)
