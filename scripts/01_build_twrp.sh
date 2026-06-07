@@ -27,6 +27,7 @@ SOONG_MK="vendor/twrp/config/BoardConfigSoong.mk"
 [ -f "$SOONG_MK" ] && sed -i '\|-include bootable/recovery/orangefox_soong.mk|d' "$SOONG_MK"
 
 # shellcheck disable=SC1091
+unset -f grep 2>/dev/null || true   # undo any grep wrapper (e.g. Claude Code ugrep shim)
 source build/envsetup.sh
 export ALLOW_MISSING_DEPENDENCIES=true
 export NOT_ORANGEFOX=1          # disable OrangeFox Makefile hooks

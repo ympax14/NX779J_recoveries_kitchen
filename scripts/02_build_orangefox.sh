@@ -46,6 +46,7 @@ export ALLOW_MISSING_DEPENDENCIES=true
 unset NOT_ORANGEFOX   # ensure Makefile hooks are active
 
 # shellcheck disable=SC1091
+unset -f grep 2>/dev/null || true
 source build/envsetup.sh
 lunch twrp_NX779J-bp2a-eng
 

@@ -36,6 +36,7 @@ export ALLOW_MISSING_DEPENDENCIES=true
 export NOT_ORANGEFOX=1   # disable OrangeFox Makefile hooks
 
 # shellcheck disable=SC1091
+unset -f grep 2>/dev/null || true
 source build/envsetup.sh
 lunch twrp_NX779J-bp2a-eng
 
