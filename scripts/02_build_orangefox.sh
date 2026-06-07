@@ -36,6 +36,10 @@ fi
 SOONG_MK="vendor/twrp/config/BoardConfigSoong.mk"
 [ -f "$SOONG_MK" ] && sed -i '\|-include bootable/recovery/orangefox_soong.mk|d' "$SOONG_MK"
 
+# Clean recovery staging to avoid rsync conflicts with stale OrangeFox artifacts
+rm -rf "$BUILD_DIR/out/target/product/NX779J/recovery/" \
+       "$BUILD_DIR/out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/" 2>/dev/null || true
+
 export FOX_BUILD_DEVICE=NX779J
 export FOX_DEVICE=NX779J
 export FOX_AB_DEVICE=1
