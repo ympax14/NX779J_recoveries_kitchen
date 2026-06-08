@@ -68,11 +68,15 @@ bool fs_mgr_get_boot_config(const std::string& key, std::string* out_val);
 EOF
 fi
 
-# 4. build/make/core/Makefile: exclude recovery's real /root/etc from rsync overwrite
+# 4. build/make/core/Makefile: exclude real dirs in recovery rootfs from rsync overwrite
+#    (system rootfs has symlinks; recovery has real dirs populated by install steps)
 MAKEFILE="build/make/core/Makefile"
 if ! grep -q -- '--exclude=/root/etc' "$MAKEFILE"; then
-    echo "==> Patching Makefile rsync to preserve recovery /root/etc..."
-    sed -i 's|rsync -a --exclude=sdcard \$(IGNORE_RECOVERY_SEPOLICY)|rsync -a --exclude=sdcard --exclude=/root/etc $(IGNORE_RECOVERY_SEPOLICY)|' "$MAKEFILE"
+    echo "==> Patching Makefile rsync to add recovery rootfs excludes..."
+    sed -i 's|rsync -a --exclude=sdcard \$(IGNORE_RECOVERY_SEPOLICY)|rsync -a --exclude=sdcard --exclude=/root/etc --exclude=/root/odm/etc $(IGNORE_RECOVERY_SEPOLICY)|' "$MAKEFILE"
+elif ! grep -q -- '--exclude=/root/odm/etc' "$MAKEFILE"; then
+    echo "==> Patching Makefile rsync to add /root/odm/etc exclude..."
+    sed -i 's|--exclude=/root/etc \$(IGNORE_RECOVERY_SEPOLICY)|--exclude=/root/etc --exclude=/root/odm/etc $(IGNORE_RECOVERY_SEPOLICY)|' "$MAKEFILE"
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────

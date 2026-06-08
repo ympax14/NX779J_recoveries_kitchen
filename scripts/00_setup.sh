@@ -3,10 +3,10 @@
 # Run from the kitchen root (parent of this scripts/ directory).
 # Usage: bash scripts/00_setup.sh [build_root]
 #   build_root defaults to ./twrp-build
-set -euo pipefail
+set -eo pipefail
 
 KITCHEN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="${1:-$KITCHEN_DIR/twrp-build}"
+BUILD_DIR="${1:-$(cd "$KITCHEN_DIR/../TWRP" 2>/dev/null && pwd || echo "$KITCHEN_DIR/twrp-build")}"
 JOBS="$(nproc)"
 
 MANIFEST_URL="https://github.com/TWRP-Test/platform_manifest_twrp_aosp.git"

@@ -5,10 +5,10 @@
 # The Makefile hooks in build/make/core/Makefile (applied by 00_setup.sh) call
 # OrangeFox_A16.sh at the right build stages.
 # Usage: bash scripts/02_build_orangefox.sh [build_root]
-set -euo pipefail
+set -eo pipefail
 
 KITCHEN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="${1:-$KITCHEN_DIR/twrp-build}"
+BUILD_DIR="${1:-$(cd "$KITCHEN_DIR/../TWRP" 2>/dev/null && pwd || echo "$KITCHEN_DIR/twrp-build")}"
 LOG="$KITCHEN_DIR/logs/orangefox_build.log"
 DEST="$KITCHEN_DIR/builds/orangefox_NX779J.img"
 
@@ -38,6 +38,15 @@ if [ -f "$PATCH" ]; then
     else
         echo "==> fox_14.1 Android 16 compat patches already applied (or not needed)."
     fi
+fi
+
+# Fix libtar/extract.c: system/vold/fscrypt_policy.h now declares lookup_ref_tar(fscrypt_policy *),
+# but fox_14.1 extract.c passes just the raw key field — update both call sites.
+EXTRACT_C="bootable/recovery/libtar/extract.c"
+if grep -q 'lookup_ref_tar(t->th_buf\.fep->master_key' "$EXTRACT_C" 2>/dev/null; then
+    echo "==> Fixing libtar lookup_ref_tar call sites for fscrypt_policy * API..."
+    sed -i 's/lookup_ref_tar(t->th_buf\.fep->master_key_descriptor,/lookup_ref_tar(t->th_buf.fep,/g' "$EXTRACT_C"
+    sed -i 's/lookup_ref_tar(t->th_buf\.fep->master_key_identifier,/lookup_ref_tar(t->th_buf.fep,/g' "$EXTRACT_C"
 fi
 
 # OrangeFox vendor/recovery overlay (provides OrangeFox_A16.sh)

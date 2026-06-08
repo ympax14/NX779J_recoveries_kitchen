@@ -1,12 +1,25 @@
 #!/usr/bin/env bash
 # Run all build steps in sequence: setup → TWRP → OrangeFox → PBRP.
-# Run from the kitchen root or pass the build root as argument.
-# Usage: bash scripts/build_all.sh [build_root] [--skip-setup]
-set -euo pipefail
+# Usage:
+#   bash scripts/build_all.sh                            # auto-detect build root
+#   bash scripts/build_all.sh /path/to/build             # explicit build root
+#   bash scripts/build_all.sh [build_root] --skip-setup  # skip repo sync
+set -eo pipefail
 
 KITCHEN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="${1:-$KITCHEN_DIR/twrp-build}"
 SCRIPTS_DIR="$KITCHEN_DIR/scripts"
+
+# Parse args: first non-flag arg is build root, flags can appear anywhere
+SKIP_SETUP=0
+BUILD_DIR=""
+for arg in "$@"; do
+    case "$arg" in
+        --skip-setup) SKIP_SETUP=1 ;;
+        --*)          echo "Unknown flag: $arg"; exit 1 ;;
+        *)            BUILD_DIR="$arg" ;;
+    esac
+done
+[ -z "$BUILD_DIR" ] && BUILD_DIR="$(cd "$KITCHEN_DIR/../TWRP" 2>/dev/null && pwd || echo "$KITCHEN_DIR/twrp-build")"
 
 echo "========================================"
 echo "  NX779J Recovery Build Suite"
@@ -24,7 +37,7 @@ run_step() {
     echo ""
 }
 
-if [[ "${2:-}" != "--skip-setup" ]]; then
+if [ "$SKIP_SETUP" -eq 0 ]; then
     run_step "Setup (sync + patches)" "00_setup.sh"
 fi
 
