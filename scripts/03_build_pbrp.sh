@@ -99,6 +99,15 @@ rm -f  "$OUT_IMG"
 rm -rf out/target/product/NX779J/recovery/ \
        out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/ 2>/dev/null || true
 
+# 5. hardware/interfaces/weaver/aidl/Android.bp: add recovery_available: true so
+#    android.hardware.weaver-V2-ndk.so is staged into the recovery ramdisk.
+#    Without it PBRP's recovery binary crashes with "library not found" at startup.
+WEAVER_BP="hardware/interfaces/weaver/aidl/Android.bp"
+if ! grep -q "recovery_available" "$WEAVER_BP"; then
+    sed -i 's/vendor_available: true,/vendor_available: true,\n    recovery_available: true,/' "$WEAVER_BP"
+    echo "==> Patched weaver Android.bp: added recovery_available: true"
+fi
+
 mkdir -p "$KITCHEN_DIR/logs"
 echo "==> Building PBRP (log: $LOG)..."
 # CleanSpec.mk changes when bootable/recovery switches from OrangeFox/TWRP to PBRP.

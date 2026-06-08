@@ -86,6 +86,47 @@ mkdir -p "$KITCHEN_DIR/logs"
 echo "==> Building OrangeFox (log: $LOG)..."
 mka recoveryimage 2>&1 | tee "$LOG"
 
+# ── Post-build ramdisk patches (inject before repack) ──────────────────────────
+
+# foxstart.sh — OrangeFox calls /sbin/foxstart.sh at startup; fox_16.0 does not
+# install a default one, so recovery logs "foxstart error 127".
+SBIN_DIR="$BUILD_DIR/out/target/product/NX779J/recovery/root/sbin"
+if [ ! -f "$SBIN_DIR/foxstart.sh" ]; then
+    mkdir -p "$SBIN_DIR"
+    cat > "$SBIN_DIR/foxstart.sh" << 'FOXEOF'
+#!/sbin/sh
+exit 0
+FOXEOF
+    chmod 755 "$SBIN_DIR/foxstart.sh"
+    echo "==> Created foxstart.sh stub in recovery ramdisk"
+fi
+
+# themes/navbar.xml — OrangeFox_A16.sh generates this with navbar_disable=1 and
+# screen_h=screen_h+96.  It is loaded AFTER /sdcard/Fox/.navbar/navbar.xml and
+# overrides the user's gesture/button settings, hiding back/home buttons.
+NAVBAR_XML="$BUILD_DIR/out/target/product/NX779J/recovery/root/twres/themes/navbar.xml"
+if [ -f "$NAVBAR_XML" ]; then
+    cat > "$NAVBAR_XML" << 'NAVEOF'
+<?xml version="1.0"?>
+<recovery>
+    <variables>
+        <variable name="navbar_disable" value="0"/>
+        <variable name="navbar_disable_add" value="0"/>
+        <variable name="screen_h" value="2480"/>
+        <variable name="real_gestures_enable" value="1"/>
+    </variables>
+</recovery>
+NAVEOF
+    echo "==> Patched themes/navbar.xml: navbar_disable=0, screen_h=2480, real_gestures_enable=1"
+fi
+
+# Remove the already-built image so make sees the target as stale and repacks
+# the ramdisk (otherwise make won't detect our out-of-band changes to recovery/root/)
+rm -f "$BUILD_DIR/out/target/product/NX779J/recovery.img" \
+      "$BUILD_DIR/out/target/product/NX779J/OrangeFox"-*.img 2>/dev/null || true
+echo "==> Repacking OrangeFox image with patched ramdisk..."
+mka recoveryimage 2>&1 | tee -a "$LOG"
+
 SRC="$BUILD_DIR/out/target/product/NX779J/OrangeFox-R11.3-Unofficial-NX779J.img"
 [ -f "$SRC" ] || SRC="$BUILD_DIR/out/target/product/NX779J/recovery.img"
 [ -f "$SRC" ] || { echo "ERROR: OrangeFox image not found — check $LOG"; exit 1; }
