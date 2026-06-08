@@ -118,6 +118,19 @@ mka recoveryimage 2>&1 | tee "$LOG" || {
     mka recoveryimage 2>&1 | tee -a "$LOG"
 }
 
+# ── Ensure weaver AIDL NDK library is in the recovery ramdisk ─────────────────
+# Soong only builds the recovery variant when recovery_available is set AND
+# the module is in the recovery variant build graph.  ALLOW_MISSING_DEPENDENCIES=true
+# lets the build succeed without it.  Direct-copy is the reliable fallback.
+WEAVER_SYS="$BUILD_DIR/out/target/product/NX779J/system/lib64/android.hardware.weaver-V2-ndk.so"
+WEAVER_REC="$BUILD_DIR/out/target/product/NX779J/recovery/root/system/lib64/android.hardware.weaver-V2-ndk.so"
+if [ -f "$WEAVER_SYS" ] && [ ! -f "$WEAVER_REC" ]; then
+    cp "$WEAVER_SYS" "$WEAVER_REC"
+    echo "==> Copied weaver-V2-ndk.so to recovery ramdisk — repacking image..."
+    rm -f "$OUT_IMG"
+    mka recoveryimage 2>&1 | tee -a "$LOG"
+fi
+
 [ -f "$OUT_IMG" ] || { echo "ERROR: recovery.img not found — check $LOG"; exit 1; }
 mkdir -p "$KITCHEN_DIR/builds"
 cp "$OUT_IMG" "$DEST"
