@@ -56,7 +56,7 @@ fi
 # ── Makefile patch (OrangeFox hooks) ─────────────────────────────────────────
 PATCH="$KITCHEN_DIR/patches/makefile_orangefox_hooks.patch"
 MAKEFILE="build/make/core/Makefile"
-if ! grep -q "_fox_pre" "$MAKEFILE"; then
+if ! grep -q "Fox_Before_Recovery_Image" "$MAKEFILE"; then
     echo "==> Applying OrangeFox Makefile hooks..."
     git -C build/make apply --whitespace=nowarn < <(
         # Strip the a/b prefix from the patch so it applies from build/make root

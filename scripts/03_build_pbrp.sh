@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Build PitchBlack Recovery Project (PBRP) for NX779J.
-# Note: PBRP android-14.0 is TWRP 14.1 based. If compilation fails against
-# Android 16 bionic/libcxx headers, see README for known workarounds.
+# PBRP android-14.0 is TWRP 14.1 based; this script patches it for Android 16
+# compatibility before building against the twrp-16.0 build tree.
 # Usage: bash scripts/03_build_pbrp.sh [build_root]
-set -euo pipefail
+set -eo pipefail
 
 KITCHEN_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD_DIR="${1:-$KITCHEN_DIR/twrp-build}"
+BUILD_DIR="${1:-$(cd "$KITCHEN_DIR/../TWRP" 2>/dev/null && pwd || echo "$KITCHEN_DIR/twrp-build")}"
 OUT_IMG="$BUILD_DIR/out/target/product/NX779J/recovery.img"
 DEST="$KITCHEN_DIR/builds/pbrp_NX779J.img"
 LOG="$KITCHEN_DIR/logs/pbrp_build.log"
@@ -28,6 +28,54 @@ if ! echo "$_remote" | grep -qi "pitchblack\|PitchBlack"; then
 else
     echo "==> PBRP bootable/recovery already present."
 fi
+
+# ── Android 16 compatibility patches ─────────────────────────────────────────
+
+# 1. bootable/recovery: PBRP android-14.0 → Android 16 compat
+PATCH_REC="$KITCHEN_DIR/patches/pbrp_android16_compat.patch"
+if [ -f "$PATCH_REC" ]; then
+    if git -C bootable/recovery apply --check --whitespace=nowarn "$PATCH_REC" 2>/dev/null; then
+        echo "==> Applying PBRP bootable/recovery Android 16 compat patch..."
+        git -C bootable/recovery apply --whitespace=nowarn "$PATCH_REC"
+    else
+        echo "==> PBRP bootable/recovery compat patch already applied."
+    fi
+fi
+
+# 2. system/vold: fscrypt_policy.h typedefs + lookup_ref_tar signature for PBRP libtar
+PATCH_VOLD="$KITCHEN_DIR/patches/pbrp_vold_compat.patch"
+if [ -f "$PATCH_VOLD" ]; then
+    if git -C system/vold apply --check --whitespace=nowarn "$PATCH_VOLD" 2>/dev/null; then
+        echo "==> Applying PBRP system/vold compat patch..."
+        git -C system/vold apply --whitespace=nowarn "$PATCH_VOLD"
+    else
+        echo "==> PBRP system/vold compat patch already applied."
+    fi
+fi
+
+# 3. system/core: fs_mgr_priv_boot_config.h shim (removed in Android 14, needed by PBRP code)
+FS_MGR_SHIM="system/core/fs_mgr/include/fs_mgr_priv_boot_config.h"
+if [ ! -f "$FS_MGR_SHIM" ]; then
+    echo "==> Creating $FS_MGR_SHIM compat shim..."
+    cat > "$FS_MGR_SHIM" << 'EOF'
+/* Compatibility shim: fs_mgr_priv_boot_config.h was removed in Android 14.
+ * fs_mgr_get_boot_config() is now declared in libfstab/fstab_priv.h. */
+#pragma once
+
+#include <string>
+
+bool fs_mgr_get_boot_config(const std::string& key, std::string* out_val);
+EOF
+fi
+
+# 4. build/make/core/Makefile: exclude recovery's real /root/etc from rsync overwrite
+MAKEFILE="build/make/core/Makefile"
+if ! grep -q -- '--exclude=/root/etc' "$MAKEFILE"; then
+    echo "==> Patching Makefile rsync to preserve recovery /root/etc..."
+    sed -i 's|rsync -a --exclude=sdcard \$(IGNORE_RECOVERY_SEPOLICY)|rsync -a --exclude=sdcard --exclude=/root/etc $(IGNORE_RECOVERY_SEPOLICY)|' "$MAKEFILE"
+fi
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 export PB_DEVICE_NAME=NX779J
 export PB_BUILD_TYPE=Unofficial

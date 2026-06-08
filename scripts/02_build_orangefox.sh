@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build OrangeFox recovery for NX779J.
-# Strategy: TWRP-16.0 bootable/recovery (Android 16 compatible) + OrangeFox fox_16.0 vendor overlay.
+# Strategy: OrangeFox fox_14.1 bootable/recovery (patched for Android 16 compat)
+#           + OrangeFox fox_16.0 vendor overlay (OrangeFox_A16.sh hooks).
 # The Makefile hooks in build/make/core/Makefile (applied by 00_setup.sh) call
 # OrangeFox_A16.sh at the right build stages.
 # Usage: bash scripts/02_build_orangefox.sh [build_root]
@@ -11,17 +12,32 @@ BUILD_DIR="${1:-$KITCHEN_DIR/twrp-build}"
 LOG="$KITCHEN_DIR/logs/orangefox_build.log"
 DEST="$KITCHEN_DIR/builds/orangefox_NX779J.img"
 
+OF_RECOVERY_URL="https://gitlab.com/OrangeFox/bootable/recovery.git"
+OF_RECOVERY_BRANCH="fox_14.1"
 OF_VENDOR_URL="https://gitlab.com/OrangeFox/vendor/recovery.git"
 OF_VENDOR_BRANCH="fox_16.0"
 
 cd "$BUILD_DIR"
 
-# Restore TWRP bootable/recovery if a third-party fork is present
+# bootable/recovery: OrangeFox fox_14.1 (provides OrangeFox UI)
 _remote="$(git -C bootable/recovery remote get-url origin 2>/dev/null || true)"
-if echo "$_remote" | grep -qi "orangefox\|pitchblack"; then
-    echo "==> Restoring TWRP bootable/recovery from manifest..."
+if ! echo "$_remote" | grep -qi "OrangeFox/bootable"; then
+    echo "==> Cloning OrangeFox bootable/recovery ($OF_RECOVERY_BRANCH)..."
     rm -rf bootable/recovery
-    repo sync bootable/recovery --no-tags --no-clone-bundle -j"$(nproc)"
+    git clone "$OF_RECOVERY_URL" -b "$OF_RECOVERY_BRANCH" --depth=1 bootable/recovery
+else
+    echo "==> OrangeFox bootable/recovery already present."
+fi
+
+# Apply Android 16 compatibility patches to fox_14.1
+PATCH="$KITCHEN_DIR/patches/fox14_android16_compat.patch"
+if [ -f "$PATCH" ]; then
+    if git -C bootable/recovery apply --check --whitespace=nowarn "$PATCH" 2>/dev/null; then
+        echo "==> Applying fox_14.1 Android 16 compat patches..."
+        git -C bootable/recovery apply --whitespace=nowarn "$PATCH"
+    else
+        echo "==> fox_14.1 Android 16 compat patches already applied (or not needed)."
+    fi
 fi
 
 # OrangeFox vendor/recovery overlay (provides OrangeFox_A16.sh)
@@ -36,7 +52,7 @@ fi
 SOONG_MK="vendor/twrp/config/BoardConfigSoong.mk"
 [ -f "$SOONG_MK" ] && sed -i '\|-include bootable/recovery/orangefox_soong.mk|d' "$SOONG_MK"
 
-# Clean recovery staging to avoid rsync conflicts with stale OrangeFox artifacts
+# Clean recovery staging to avoid rsync conflicts with stale artifacts
 rm -rf "$BUILD_DIR/out/target/product/NX779J/recovery/" \
        "$BUILD_DIR/out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/" 2>/dev/null || true
 
@@ -58,12 +74,10 @@ mkdir -p "$KITCHEN_DIR/logs"
 echo "==> Building OrangeFox (log: $LOG)..."
 mka recoveryimage 2>&1 | tee "$LOG"
 
-# OrangeFox_A16.sh saves the final image to /tmp/OrangeFox_<DEVICE>/
-OFX_TMP="$(find /tmp -maxdepth 2 -name 'OrangeFox*.img' 2>/dev/null | sort -V | tail -1)"
-SRC="${OFX_TMP:-$BUILD_DIR/out/target/product/NX779J/recovery.img}"
-
+SRC="$BUILD_DIR/out/target/product/NX779J/OrangeFox-R11.3-Unofficial-NX779J.img"
+[ -f "$SRC" ] || SRC="$BUILD_DIR/out/target/product/NX779J/recovery.img"
 [ -f "$SRC" ] || { echo "ERROR: OrangeFox image not found — check $LOG"; exit 1; }
 mkdir -p "$KITCHEN_DIR/builds"
 cp "$SRC" "$DEST"
 echo ""
-echo "==> OrangeFox build complete: $DEST ($(du -sh "$DEST" | cut -f1))"
+echo "==> OrangeFox build complete: $DEST ($(ls -lh "$DEST" | awk '{print $5}'))"

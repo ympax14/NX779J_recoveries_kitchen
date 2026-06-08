@@ -1,0 +1,295 @@
+diff --git a/Android.bp b/Android.bp
+index ddc24cf..19cfa20 100755
+--- a/Android.bp
++++ b/Android.bp
+@@ -122,7 +122,6 @@ cc_library_shared {
+         "libvintf", 
+         "libhidl-gen-utils",
+         "librecovery_utils",
+-        "libc++fs",
+         "libprotobuf-cpp-lite",
+         "ota_metadata_proto_cc",
+         "update_metadata-protos"
+diff --git a/Android.mk b/Android.mk
+index e67fcb5..1e1451d 100755
+--- a/Android.mk
++++ b/Android.mk
+@@ -81,7 +81,7 @@ LOCAL_SHARED_LIBRARIES += android.hardware.boot@1.0 \
+                           android.hardware.boot@1.2 \
+                           android.hardware.health@2.0 \
+                           android.hardware.health@2.1 \
+-                          android.hardware.health-V3-ndk \
++                          android.hardware.health-V4-ndk \
+                           android.hardware.health-translate-ndk \
+                           libbinder \
+                           libbinder_ndk \
+@@ -129,7 +129,6 @@ LOCAL_C_INCLUDES += \
+     system/libziparchive/include \
+     external/freetype/include \
+     external/boringssl/include \
+-    external/libcxx/include \
+     external/libselinux/include \
+     external/libpng \
+     $(LOCAL_PATH)/gui/include \
+@@ -681,7 +680,8 @@ LOCAL_REQUIRED_MODULES := file_contexts.bin
+ 
+ LOCAL_POST_INSTALL_CMD := \
+     mkdir -p $(TARGET_RECOVERY_ROOT_OUT)/; \
+-    cp -fn $(PRODUCT_OUT)/obj/ETC/file_contexts.bin_intermediates/file_contexts.concat.tmp $(TARGET_RECOVERY_ROOT_OUT)/file_contexts;
++    { cp -fn $(PRODUCT_OUT)/obj/ETC/file_contexts.bin_intermediates/file_contexts.concat.tmp $(TARGET_RECOVERY_ROOT_OUT)/file_contexts 2>/dev/null || \
++      find $(SOONG_OUT_DIR)/.intermediates/system/sepolicy -name "file_contexts.concat.tmp" -exec cp -fn {} $(TARGET_RECOVERY_ROOT_OUT)/file_contexts \; ; };
+ 
+ # Darth9
+ #
+diff --git a/bootloader_message/Android.bp b/bootloader_message/Android.bp
+index 7622677..b798886 100644
+--- a/bootloader_message/Android.bp
++++ b/bootloader_message/Android.bp
+@@ -45,6 +45,7 @@ cc_library {
+         "libbootloader_message_defaults",
+     ],
+     recovery_available: true,
++    ramdisk_available: true,
+     vendor_available: true,
+     host_supported: true,
+ 
+diff --git a/crypto/scrypt/sources.bp b/crypto/scrypt/sources.bp
+index d21344f..6f39d1c 100644
+--- a/crypto/scrypt/sources.bp
++++ b/crypto/scrypt/sources.bp
+@@ -45,14 +45,12 @@ cc_defaults {
+ 
+     arch: {
+         arm: {
+-            neon: {
+-                srcs: [
+-                    "lib/crypto/crypto_scrypt-neon.c",
+-                ],
+-                exclude_srcs: [
+-                    "lib/crypto/crypto_scrypt-ref.c",
+-                ],
+-            },
++            srcs: [
++                "lib/crypto/crypto_scrypt-neon.c",
++            ],
++            exclude_srcs: [
++                "lib/crypto/crypto_scrypt-ref.c",
++            ],
+         },
+         arm64: {
+             srcs: [
+diff --git a/libpixelflinger/Android.bp b/libpixelflinger/Android.bp
+index a23e386..f3f118d 100644
+--- a/libpixelflinger/Android.bp
++++ b/libpixelflinger/Android.bp
+@@ -16,13 +16,6 @@ cc_defaults {
+         "libutils",
+     ],
+ 
+-    arch: {
+-        arm: {
+-            neon: {
+-                cflags: ["-D__ARM_HAVE_NEON"],
+-            },
+-        },
+-    },
+ }
+ 
+ cc_library_static {
+@@ -71,10 +64,6 @@ cc_library_static {
+                 "col32cb16blend.S",
+                 "t32cb16blend.S",
+             ],
+-
+-            neon: {
+-                srcs: ["col32cb16blend_neon.S"],
+-            },
+         },
+         arm64: {
+             srcs: [
+diff --git a/minadbd/Android.bp b/minadbd/Android.bp
+index cf20156..0c1db9f 100644
+--- a/minadbd/Android.bp
++++ b/minadbd/Android.bp
+@@ -99,7 +99,7 @@ cc_binary {
+     ],
+ 
+     shared_libs: [
+-        "android.hardware.health-V3-ndk", // from librecovery_utils
++        "android.hardware.health-V4-ndk", // from librecovery_utils
+         "libbase",
+         "libcrypto",
+     ],
+@@ -131,7 +131,7 @@ cc_test {
+     ],
+ 
+     static_libs: [
+-        "android.hardware.health-V3-ndk", // from librecovery_utils
++        "android.hardware.health-V4-ndk", // from librecovery_utils
+         "libminadbd_services",
+         "libfusesideload",
+         "librecovery_utils",
+diff --git a/minuitwrp/Android.bp b/minuitwrp/Android.bp
+index bfd0942..1a404e3 100644
+--- a/minuitwrp/Android.bp
++++ b/minuitwrp/Android.bp
+@@ -28,7 +28,6 @@ cc_library_shared {
+         "external/zlib",
+         "system/core/include",
+         "external/freetype/include",
+-        "external/libcxx/include",
+         "bootable/recovery",
+         "bootable/recovery/twrpinstall/include",
+         "bootable/recovery/libpixelflinger/include",
+diff --git a/ozip_decrypt/ozip_decrypt.cpp b/ozip_decrypt/ozip_decrypt.cpp
+index 97826ec..8b2e9f4 100644
+--- a/ozip_decrypt/ozip_decrypt.cpp
++++ b/ozip_decrypt/ozip_decrypt.cpp
+@@ -16,13 +16,14 @@
+ 
+ #include <iostream>
+ #include <string.h>
++#include <vector>
+ #include <openssl/evp.h>
+ #include <openssl/ssl.h>
+ #define _FILE_OFFSET_BITS 64
+ //extern "C" __int64 __cdecl _ftelli64(FILE*);
+ 
+ using namespace std;
+-typedef std::basic_string<unsigned char> u_string;
++typedef std::vector<unsigned char> u_string;
+ 
+ int decrypt(unsigned char* ciphertext, int ciphertext_len, unsigned char* key,
+ 	unsigned char* iv, unsigned char* plaintext)
+@@ -54,27 +55,31 @@ std::string hexToASCII(string hex)
+ }
+ 
+ bool testkey(const char* keyf, const char* path) {
+-	u_string key = (unsigned char*)(hexToASCII(keyf)).c_str();
++	std::string keystr = hexToASCII(keyf);
++	u_string key(keystr.begin(), keystr.end());
+ 	int data[17];
+ 	FILE* fps = fopen(path, "rb");
+ 	fseek(fps, 4176, SEEK_SET);
+ 	fread(data, sizeof(char), 16, fps);
+ 	fclose(fps);
+-	u_string udata = (unsigned char*)data;
++	u_string udata((unsigned char*)data, (unsigned char*)data + 16);
+ 	EVP_CIPHER_CTX* ctx = EVP_CIPHER_CTX_new();
+ 	EVP_CIPHER_CTX_init(ctx);
+-	EVP_DecryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, key.c_str(), NULL);
++	EVP_DecryptInit_ex(ctx, EVP_aes_128_ecb(), NULL, key.data(), NULL);
+ 	EVP_CIPHER_CTX_set_padding(ctx, false);
+ 	unsigned char buffer[1024], * pointer = buffer;
+ 	int outlen;
+-	EVP_DecryptUpdate(ctx, pointer, &outlen, udata.c_str(), udata.length());
++	EVP_DecryptUpdate(ctx, pointer, &outlen, udata.data(), (int)udata.size());
+ 	pointer += outlen;
+ 	EVP_DecryptFinal_ex(ctx, pointer, &outlen);
+ 	pointer += outlen;
+ 	EVP_CIPHER_CTX_free(ctx);
+-	u_string test= u_string(buffer, pointer - buffer);
+-	u_string checktest = test.substr(0, 4);
+-	if (checktest == ((unsigned char*) "\x50\x4B\x03\x04") || checktest == ((unsigned char*) "\x41\x4E\x44\x52")) {
++	u_string test(buffer, pointer);
++	u_string checktest(test.begin(), test.begin() + (test.size() >= 4 ? 4 : test.size()));
++	static const unsigned char zip_magic[] = {0x50, 0x4B, 0x03, 0x04};
++	static const unsigned char andr_magic[] = {0x41, 0x4E, 0x44, 0x52};
++	u_string zip_m(zip_magic, zip_magic + 4), andr_m(andr_magic, andr_magic + 4);
++	if (checktest == zip_m || checktest == andr_m) {
+ 		return true;
+ 	}
+ 	return false;
+diff --git a/partitionmanager.cpp b/partitionmanager.cpp
+index 0ea3a12..1c0f053 100755
+--- a/partitionmanager.cpp
++++ b/partitionmanager.cpp
+@@ -684,7 +684,7 @@ void TWPartitionManager::Decrypt_Data() {
+ 			Set_Crypto_Type("file");
+ #ifdef TW_INCLUDE_FBE_METADATA_DECRYPT
+ #ifdef USE_FSCRYPT
+-			if (android::vold::fscrypt_mount_metadata_encrypted(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, false, false, Decrypt_Data->Current_File_System, "", TWFunc::Path_Exists(additional_fstab) ? additional_fstab : "")) {
++			if (android::vold::fscrypt_mount_metadata_encrypted(Decrypt_Data->Actual_Block_Device, Decrypt_Data->Mount_Point, false, false, Decrypt_Data->Current_File_System, false, {}, {}, 0, TWFunc::Path_Exists(additional_fstab) ? additional_fstab : "")) {
+ 				std::string crypto_blkdev = android::base::GetProperty("ro.crypto.fs_crypto_blkdev", "error");
+ 				Decrypt_Data->Decrypted_Block_Device = crypto_blkdev;
+ 				LOGINFO("Successfully decrypted metadata encrypted data partition with new block device: '%s'\n", crypto_blkdev.c_str());
+diff --git a/prebuilt/Android.mk b/prebuilt/Android.mk
+index a024033..2ff5c14 100755
+--- a/prebuilt/Android.mk
++++ b/prebuilt/Android.mk
+@@ -386,7 +386,7 @@ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V1-cpp.so
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V2-cpp.so
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.vibrator-V2-ndk.so
+-RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health-V3-ndk.so
++RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health-V4-ndk.so
+ RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/android.hardware.health-translate-ndk.so
+ ifneq ($(wildcard system/core/libkeyutils/Android.bp),)
+ 	RECOVERY_LIBRARY_SOURCE_FILES += $(TARGET_OUT_SHARED_LIBRARIES)/libkeyutils.so
+diff --git a/recovery_utils/Android.bp b/recovery_utils/Android.bp
+index 9c5ad3e..d5f6891 100644
+--- a/recovery_utils/Android.bp
++++ b/recovery_utils/Android.bp
+@@ -75,11 +75,11 @@ cc_library_static {
+ 
+     shared_libs: [
+         // The following cannot be placed in librecovery_utils_defaults,
+-        // because at the time of writing, android.hardware.health-V3-ndk.so
++        // because at the time of writing, android.hardware.health-V4-ndk.so
+         // is not installed to the system image yet. (It is installed
+         // to the recovery ramdisk.) Hence, minadbd_test must link to it
+         // statically.
+-        "android.hardware.health-V3-ndk",
++        "android.hardware.health-V4-ndk",
+     ],
+ 
+     export_include_dirs: [
+diff --git a/tests/Android.bp b/tests/Android.bp
+index ef90c63..2a1d78f 100644
+--- a/tests/Android.bp
++++ b/tests/Android.bp
+@@ -100,7 +100,6 @@ librecovery_static_libs = [
+     "libhidlbase",
+     "liblp",
+     "libtinyxml2",
+-    "libc++fs",
+ ]
+ 
+ // recovery image for unittests.
+@@ -148,7 +147,7 @@ cc_test {
+ 
+     static_libs: libapplypatch_static_libs + librecovery_static_libs + [
+         "android.hardware.health-translate-ndk",
+-        "android.hardware.health-V3-ndk",
++        "android.hardware.health-V4-ndk",
+         "libhealthshim",
+         "librecovery_ui",
+         "libfusesideload",
+@@ -212,7 +211,6 @@ cc_test_host {
+         "libdivsufsort64",
+         "libdivsufsort",
+         "libfstab",
+-        "libc++fs",
+     ],
+ 
+     test_suites: ["general-tests"],
+diff --git a/updater/Android.bp b/updater/Android.bp
+index 35debaa..1688bf7 100644
+--- a/updater/Android.bp
++++ b/updater/Android.bp
+@@ -159,7 +159,6 @@ cc_library_host_static {
+     static_libs: [
+         "libupdater_core",
+         "libfstab",
+-        "libc++fs",
+     ],
+ 
+     target: {
+@@ -189,7 +188,6 @@ cc_binary_host {
+         "libupdater_core",
+         "libcrypto_static",
+         "libfstab",
+-        "libc++fs",
+     ],
+ 
+     target: {

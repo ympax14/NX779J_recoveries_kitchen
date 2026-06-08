@@ -1,0 +1,181 @@
+diff --git a/Decrypt.cpp b/Decrypt.cpp
+index a02bad8..a395870 100755
+--- a/Decrypt.cpp
++++ b/Decrypt.cpp
+@@ -182,50 +182,49 @@ extern "C" bool lookup_ref_key(fscrypt_policy_v2* fep, uint8_t* policy_type) {
+     return true;
+ }
+ 
+-extern "C" bool lookup_ref_tar(const uint8_t* policy_type, uint8_t* policy) {
+-	std::string policy_type_string = std::string((char *) policy_type);
+ #ifdef USE_FSCRYPT_POLICY_V1
+-	char policy_hex[FS_KEY_DESCRIPTOR_SIZE_HEX];
+-	bytes_to_hex(policy_type, FS_KEY_DESCRIPTOR_SIZE, policy_hex);
+-#else
+-	char policy_hex[FSCRYPT_KEY_IDENTIFIER_HEX_SIZE];
+-	bytes_to_hex(policy_type, FSCRYPT_KEY_IDENTIFIER_SIZE, policy_hex);
+-#endif
+-
+-#ifdef USE_FSCRYPT_POLICY_V1
+-	if (policy_type_string.substr(0,1) != FSCRYPT_V1) {
+-#else
+-	if (policy_type_string.substr(0,1) != FSCRYPT_V2) {
+-#endif
+-        printf("Unexpected version: %d\n", policy_type[0]);
+-        return false;
+-    }
+-
+-	if (policy_type_string.substr(1, 2) == SYSTEM_DE_KEY) {
++extern "C" bool lookup_ref_tar(fscrypt_policy_v1* fep, uint8_t* policy) {
++    const uint8_t* key_material = fep->master_key_descriptor;
++    if (std::strncmp((const char*)key_material, de_key_raw_ref.c_str(), FS_KEY_DESCRIPTOR_SIZE) == 0) {
+         memcpy(policy, de_key_raw_ref.data(), de_key_raw_ref.size());
+         return true;
+     }
+-
++    userid_t user_id = 0;
+     std::string raw_ref;
+-
+-	if (policy_type_string.substr(1, 1) == USER_DE_KEY) {
+-		userid_t user_id = std::stoi(policy_type_string.substr(3, 4).c_str());
+-        if (lookup_key_ref(s_de_policies, user_id, &raw_ref)) {
+-            memcpy(policy, raw_ref.data(), raw_ref.size());
+-        } else
++    if (!lookup_ref_key_internal(s_de_policies, key_material, &user_id)) {
++        if (!lookup_ref_key_internal(s_ce_policies, key_material, &user_id)) {
++            printf("lookup_ref_tar: no matching policy for descriptor\n");
+             return false;
+-    } else if (policy_type_string.substr(1, 1) == USER_CE_KEY) {
+-		userid_t user_id = std::stoi(policy_type_string.substr(3, 4).c_str());
+-        if (lookup_key_ref(s_ce_policies, user_id, &raw_ref)) {
+-            memcpy(policy, raw_ref.data(), raw_ref.size());
+-        } else
++        }
++        if (!lookup_key_ref(s_ce_policies, user_id, &raw_ref)) return false;
++    } else {
++        if (!lookup_key_ref(s_de_policies, user_id, &raw_ref)) return false;
++    }
++    memcpy(policy, raw_ref.data(), raw_ref.size());
++    return true;
++}
++#else
++extern "C" bool lookup_ref_tar(fscrypt_policy_v2* fep, uint8_t* policy) {
++    const uint8_t* key_material = fep->master_key_identifier;
++    if (std::strncmp((const char*)key_material, de_key_raw_ref.c_str(), FSCRYPT_KEY_IDENTIFIER_SIZE) == 0) {
++        memcpy(policy, de_key_raw_ref.data(), de_key_raw_ref.size());
++        return true;
++    }
++    userid_t user_id = 0;
++    std::string raw_ref;
++    if (!lookup_ref_key_internal(s_de_policies, key_material, &user_id)) {
++        if (!lookup_ref_key_internal(s_ce_policies, key_material, &user_id)) {
++            printf("lookup_ref_tar: no matching policy for identifier\n");
+             return false;
++        }
++        if (!lookup_key_ref(s_ce_policies, user_id, &raw_ref)) return false;
+     } else {
+-        printf("unknown policy type: %s\n", policy_type);
+-        return false;
++        if (!lookup_key_ref(s_de_policies, user_id, &raw_ref)) return false;
+     }
++    memcpy(policy, raw_ref.data(), raw_ref.size());
+     return true;
+ }
++#endif
+ 
+ extern "C" bool Decrypt_DE() {
+ 	printf("Attempting to initialize DE keys\n");
+diff --git a/fscrypt_policy.h b/fscrypt_policy.h
+index 5714790..751090d 100755
+--- a/fscrypt_policy.h
++++ b/fscrypt_policy.h
+@@ -19,9 +19,27 @@
+ 
+ #include <sys/cdefs.h>
+ #include <stdbool.h>
+-#include <cutils/multiuser.h>
++#include <string.h>
++#include <stdint.h>
++#include <stddef.h>
+ #include <linux/fs.h>
+ 
++/* Allow C code to refer to struct types without 'struct' keyword */
++typedef struct fscrypt_policy_v1 fscrypt_policy_v1;
++typedef struct fscrypt_policy_v2 fscrypt_policy_v2;
++
++/*
++ * The kernel header defines `fscrypt_policy` as a macro alias for v1.
++ * Redefine it as a proper typedef that matches the active policy version
++ * so that libtar can use `fscrypt_policy *` uniformly.
++ */
++#undef fscrypt_policy
++#ifdef USE_FSCRYPT_POLICY_V1
++typedef fscrypt_policy_v1 fscrypt_policy;
++#else
++typedef fscrypt_policy_v2 fscrypt_policy;
++#endif
++
+ __BEGIN_DECLS
+ 
+ #define FS_KEY_DESCRIPTOR_SIZE_HEX (2 * FS_KEY_DESCRIPTOR_SIZE + 1)
+@@ -60,28 +78,48 @@ __BEGIN_DECLS
+ #define HEX_LOOKUP "0123456789abcdef"
+ 
+ bool fscrypt_set_mode();
++bool lookup_ref_key(fscrypt_policy *fep, uint8_t *policy_type);
++bool lookup_ref_tar(fscrypt_policy *fep, uint8_t *policy);
++bool fscrypt_policy_get_struct(const char *directory, fscrypt_policy *fep);
++bool fscrypt_policy_set_struct(const char *directory, const fscrypt_policy *fep);
++void bytes_to_hex(const uint8_t *bytes, size_t num_bytes, char *hex);
+ 
+-#ifdef USE_FSCRYPT_POLICY_V1
+-bool lookup_ref_key(struct fscrypt_policy_v1 *fep, uint8_t* policy_type);
+-#else
+-bool lookup_ref_key(struct fscrypt_policy_v2 *fep, uint8_t* policy_type);
+-#endif
++__END_DECLS
++
++/*
++ * Inline helpers used by libtar (PBRP android-14.0).
++ * These abstract V1/V2 struct differences so libtar can use `fscrypt_policy *`
++ * uniformly regardless of the active policy version.
++ */
++static inline void *get_policy(const fscrypt_policy *fep) {
++    return (void *)fep;
++}
+ 
+-bool lookup_ref_tar(const uint8_t *policy_type, uint8_t *policy);
++static inline size_t fscrypt_policy_size(const fscrypt_policy *fep) {
++    (void)fep;
++    return sizeof(fscrypt_policy);
++}
+ 
++static inline uint8_t *get_policy_descriptor(const fscrypt_policy *fep) {
+ #ifdef USE_FSCRYPT_POLICY_V1
+-bool fscrypt_policy_get_struct(const char *directory, struct fscrypt_policy_v1  *fep);
++    return (uint8_t *)fep->master_key_descriptor;
+ #else
+-bool fscrypt_policy_get_struct(const char *directory, struct fscrypt_policy_v2  *fep);
++    return (uint8_t *)fep->master_key_identifier;
+ #endif
++}
+ 
++/* is_hex=false → binary descriptor size; is_hex=true → hex string size (with NUL) */
++static inline size_t get_policy_size(const fscrypt_policy *fep, bool is_hex) {
++    (void)fep;
+ #ifdef USE_FSCRYPT_POLICY_V1
+-bool fscrypt_policy_set_struct(const char *directory, const struct fscrypt_policy_v1  *fep);
++    return is_hex ? (size_t)FS_KEY_DESCRIPTOR_SIZE_HEX : (size_t)FS_KEY_DESCRIPTOR_SIZE;
+ #else
+-bool fscrypt_policy_set_struct(const char *directory, const struct fscrypt_policy_v2  *fep);
++    return is_hex ? (size_t)FSCRYPT_KEY_IDENTIFIER_HEX_SIZE : (size_t)FSCRYPT_KEY_IDENTIFIER_SIZE;
+ #endif
++}
+ 
+-void bytes_to_hex(const uint8_t *bytes, size_t num_bytes, char *hex);
+-__END_DECLS
++static inline void get_policy_content(const fscrypt_policy *fep, void *content) {
++    memcpy(content, fep, sizeof(fscrypt_policy));
++}
+ 
+ #endif // _FS_CRYPT_H_
