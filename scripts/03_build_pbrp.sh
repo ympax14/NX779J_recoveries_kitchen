@@ -92,9 +92,22 @@ unset -f grep 2>/dev/null || true
 source build/envsetup.sh
 lunch twrp_NX779J-bp2a-eng
 
+# Clean stale recovery artifacts before build.
+# - recovery.img: leftover from a previous TWRP/OF build would cause false-success detection.
+# - recovery/ staging: real dirs from a prior PBRP build conflict with system rootfs symlinks.
+rm -f  "$OUT_IMG"
+rm -rf out/target/product/NX779J/recovery/ \
+       out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/ 2>/dev/null || true
+
 mkdir -p "$KITCHEN_DIR/logs"
 echo "==> Building PBRP (log: $LOG)..."
-mka recoveryimage 2>&1 | tee "$LOG"
+# CleanSpec.mk changes when bootable/recovery switches from OrangeFox/TWRP to PBRP.
+# The Android build system then cleans Soong intermediates (incl. make_vars-twrp_NX779J.mk),
+# causing ckati to fail on the first run.  A second run regenerates all missing files.
+mka recoveryimage 2>&1 | tee "$LOG" || {
+    echo "==> mka pass 1 failed (likely CleanSpec.mk Soong clean) — retrying..."
+    mka recoveryimage 2>&1 | tee -a "$LOG"
+}
 
 [ -f "$OUT_IMG" ] || { echo "ERROR: recovery.img not found — check $LOG"; exit 1; }
 mkdir -p "$KITCHEN_DIR/builds"
