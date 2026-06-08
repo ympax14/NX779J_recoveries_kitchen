@@ -26,6 +26,9 @@ fi
 # the system rootfs has symlinks, causing rsync to fail on the next build)
 rm -rf out/target/product/NX779J/recovery/ \
        out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/ 2>/dev/null || true
+# nano_twrp's LOCAL_POST_INSTALL_CMD copies to recovery/root/system/etc/ without a
+# mkdir guard — create it here so the step doesn't fail on a clean staging tree.
+mkdir -p out/target/product/NX779J/recovery/root/system/etc
 
 # Remove legacy Soong hook if present
 SOONG_MK="vendor/twrp/config/BoardConfigSoong.mk"

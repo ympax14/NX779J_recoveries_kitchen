@@ -64,6 +64,9 @@ SOONG_MK="vendor/twrp/config/BoardConfigSoong.mk"
 # Clean recovery staging to avoid rsync conflicts with stale artifacts
 rm -rf "$BUILD_DIR/out/target/product/NX779J/recovery/" \
        "$BUILD_DIR/out/target/product/NX779J/obj/PACKAGING/recovery_intermediates/" 2>/dev/null || true
+# nano_twrp's LOCAL_POST_INSTALL_CMD copies to recovery/root/system/etc/ without a
+# mkdir guard — create it here so the step doesn't fail on a clean staging tree.
+mkdir -p "$BUILD_DIR/out/target/product/NX779J/recovery/root/system/etc"
 
 export FOX_BUILD_DEVICE=NX779J
 export FOX_DEVICE=NX779J
