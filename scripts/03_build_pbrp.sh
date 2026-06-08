@@ -16,6 +16,9 @@ PBRP_BRANCH="android-14.0"
 
 cd "$BUILD_DIR"
 
+# Remove stale output image so a failed build can't be mistaken for a success
+rm -f "$DEST"
+
 # Remove OrangeFox vendor/recovery
 [ -d vendor/recovery ] && { echo "==> Removing OrangeFox vendor/recovery..."; rm -rf vendor/recovery; }
 

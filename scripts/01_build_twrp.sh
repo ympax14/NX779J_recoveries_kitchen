@@ -11,6 +11,9 @@ LOG="$KITCHEN_DIR/logs/twrp_build.log"
 
 cd "$BUILD_DIR"
 
+# Remove stale output image so a failed build can't be mistaken for a success
+rm -f "$DEST"
+
 # Restore TWRP bootable/recovery if OrangeFox or PBRP fork is present
 _remote="$(git -C bootable/recovery remote get-url origin 2>/dev/null || true)"
 if echo "$_remote" | grep -qi "orangefox\|pitchblack"; then

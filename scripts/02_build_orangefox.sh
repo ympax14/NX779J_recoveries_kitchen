@@ -19,6 +19,9 @@ OF_VENDOR_BRANCH="fox_16.0"
 
 cd "$BUILD_DIR"
 
+# Remove stale output image so a failed build can't be mistaken for a success
+rm -f "$DEST"
+
 # bootable/recovery: OrangeFox fox_14.1 (provides OrangeFox UI)
 _remote="$(git -C bootable/recovery remote get-url origin 2>/dev/null || true)"
 if ! echo "$_remote" | grep -qi "OrangeFox/bootable"; then
