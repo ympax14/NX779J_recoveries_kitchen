@@ -1,0 +1,63 @@
+From 604fa7379dc3528261bb98d196921109e2cfe77a Mon Sep 17 00:00:00 2001
+From: Ympax14 <ympax14@gmail.com>
+Date: Wed, 10 Jun 2026 16:10:45 +0200
+Subject: [PATCH 1/2] libtar: fix fscrypt policy buffer overflow (FORTIFY
+ SIGABRT)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+USER_*_FSCRYPT_POLICY constants already embed the version prefix
+(e.g. "2CE"). The sprintf was also prepending fep->version via %u,
+producing "22CE\0" (5 bytes) into a 4-byte buffer — caught by
+FORTIFY_SOURCE as a fatal SIGABRT during nandroid backup of any
+directory with an fscrypt v2 policy (e.g. /data/bootchart).
+
+Fix: use snprintf into 16-byte buffers and drop the redundant %u
+prefix. Also switch strncmp lengths to strlen() so the full constant
+is compared rather than sizeof()-1 of a now-larger buffer.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ libtar/append.c | 18 +++++++++++-------
+ 1 file changed, 11 insertions(+), 7 deletions(-)
+
+diff --git a/libtar/append.c b/libtar/append.c
+index 225ae1a..f4fa9c6 100755
+--- a/libtar/append.c
++++ b/libtar/append.c
+@@ -154,10 +154,14 @@ tar_append_file(TAR *t, const char *realname, const char *savename)
+ 			size = get_policy_size(t->th_buf.fep, false);
+ 			hex_size = get_policy_size(t->th_buf.fep, true);
+ 			descriptor = get_policy_descriptor(t->th_buf.fep);
+-			char user_ce[4], user_de[4], system_de[4];
+-			sprintf(user_ce,"%u%s", t->th_buf.fep->version, USER_CE_FSCRYPT_POLICY);
+-			sprintf(user_de,"%u%s", t->th_buf.fep->version, USER_DE_FSCRYPT_POLICY);
+-			sprintf(system_de,"%u%s", t->th_buf.fep->version, SYSTEM_DE_FSCRYPT_POLICY);
++			/* USER_*_FSCRYPT_POLICY constants already embed the version
++			 * prefix (e.g. "2CE"). Do NOT also prepend fep->version via
++			 * %u — that produced "22CE" (5 bytes) in a 4-byte buffer,
++			 * triggering FORTIFY SIGABRT and making the strncmp never match. */
++			char user_ce[16], user_de[16], system_de[16];
++			snprintf(user_ce,   sizeof(user_ce),   "%s", USER_CE_FSCRYPT_POLICY);
++			snprintf(user_de,   sizeof(user_de),   "%s", USER_DE_FSCRYPT_POLICY);
++			snprintf(system_de, sizeof(system_de), "%s", SYSTEM_DE_FSCRYPT_POLICY);
+ #ifdef DEBUG
+ 			LOG("version: %u\n", t->th_buf.fep->version);
+ #endif
+@@ -166,9 +170,9 @@ tar_append_file(TAR *t, const char *realname, const char *savename)
+ 			memset(tar_policy, 0, sizeof(tar_policy));
+ 			bytes_to_hex(descriptor, size, policy_hex);
+ 			if (lookup_ref_key(t->th_buf.fep,  &tar_policy[0])) {
+-				if (strncmp((char *) tar_policy, user_ce, sizeof(user_ce) - 1) == 0 
+-				|| strncmp((char *) tar_policy, user_de, sizeof(user_de) - 1) == 0 
+-				|| strncmp((char *) tar_policy, system_de, sizeof(system_de)) == 0) {
++				if (strncmp((char *) tar_policy, user_ce,   strlen(user_ce))   == 0
++				|| strncmp((char *) tar_policy, user_de,   strlen(user_de))   == 0
++				|| strncmp((char *) tar_policy, system_de, strlen(system_de)) == 0) {
+ 					memcpy(descriptor, tar_policy, size);
+ 					LOG("found fscrypt policy '%s' - '%s' - '%s'\n", realname, descriptor, policy_hex);
+ 				} else {
+-- 
+2.54.0
+

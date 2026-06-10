@@ -45,6 +45,17 @@ if [ -f "$PATCH_REC" ]; then
     fi
 fi
 
+# 1b. bootable/recovery: NX779J-specific bug fixes (applied after compat patch)
+#   - libtar: fix fscrypt v2 buffer overflow → FORTIFY SIGABRT on nandroid backup
+#   - graphics_drm: O_CLOEXEC + drmSetMaster retry (PBRP two-phase exec DRM master race)
+#   - twrp-functions: markBootSuccessful() before rb_system (A/B slot reboot-to-recovery loop)
+_apply_patch bootable/recovery \
+    "0001-libtar-fix-fscrypt-policy-buffer-overflow-FORTIFY-SI.patch" \
+    "libtar: fix fscrypt policy buffer overflow (FORTIFY SIGABRT)"
+_apply_patch bootable/recovery \
+    "0002-NX779J-fix-DRM-master-ownership-and-A-B-boot-success.patch" \
+    "NX779J: fix DRM master ownership + A/B boot-success on system reboot"
+
 # 2. system/vold: fscrypt_policy.h typedefs + lookup_ref_tar signature for PBRP libtar
 PATCH_VOLD="$KITCHEN_DIR/patches/pbrp_vold_compat.patch"
 if [ -f "$PATCH_VOLD" ]; then
@@ -55,6 +66,22 @@ if [ -f "$PATCH_VOLD" ]; then
         echo "==> PBRP system/vold compat patch already applied."
     fi
 fi
+
+# 2b. system/vold: skip BootControl WaitForService() in recovery (blocks indefinitely
+#     on NX779J — BootControl HAL declared in VINTF but not started in recovery).
+_apply_patch() {
+    local repo="$1" patch="$KITCHEN_DIR/patches/$2" label="$3"
+    [ -f "$patch" ] || { echo "==> WARNING: patch not found: $2"; return 0; }
+    if git -C "$repo" apply --check --whitespace=nowarn "$patch" 2>/dev/null; then
+        echo "==> Applying $label..."
+        git -C "$repo" apply --whitespace=nowarn "$patch"
+    else
+        echo "==> $label already applied."
+    fi
+}
+_apply_patch system/vold \
+    "0001-vold-skip-BootControl-WaitForService-in-recovery-con.patch" \
+    "vold: skip BootControl WaitForService (NX779J recovery hang fix)"
 
 # 3. system/core: fs_mgr_priv_boot_config.h shim (removed in Android 14, needed by PBRP code)
 FS_MGR_SHIM="system/core/fs_mgr/include/fs_mgr_priv_boot_config.h"
@@ -121,15 +148,28 @@ mka recoveryimage 2>&1 | tee "$LOG" || {
     mka recoveryimage 2>&1 | tee -a "$LOG"
 }
 
-# ── Ensure weaver AIDL NDK library is in the recovery ramdisk ─────────────────
-# Soong only builds the recovery variant when recovery_available is set AND
-# the module is in the recovery variant build graph.  ALLOW_MISSING_DEPENDENCIES=true
-# lets the build succeed without it.  Direct-copy is the reliable fallback.
-WEAVER_SYS="$BUILD_DIR/out/target/product/NX779J/system/lib64/android.hardware.weaver-V2-ndk.so"
-WEAVER_REC="$BUILD_DIR/out/target/product/NX779J/recovery/root/system/lib64/android.hardware.weaver-V2-ndk.so"
-if [ -f "$WEAVER_SYS" ] && [ ! -f "$WEAVER_REC" ]; then
-    cp "$WEAVER_SYS" "$WEAVER_REC"
-    echo "==> Copied weaver-V2-ndk.so to recovery ramdisk — repacking image..."
+# ── Ensure libraries missing from the recovery ramdisk are injected ───────────
+# Soong only stages a lib in recovery when recovery_available is set in its Android.bp
+# AND it's reachable from the recovery variant build graph.  ALLOW_MISSING_DEPENDENCIES=true
+# lets the build succeed without them; direct-copy is the reliable fallback.
+# All copies happen together so only one mka repack pass is needed.
+SYSLIB="$BUILD_DIR/out/target/product/NX779J/system/lib64"
+RECLIB="$BUILD_DIR/out/target/product/NX779J/recovery/root/system/lib64"
+_need_repack=0
+for _lib in \
+    android.hardware.weaver-V2-ndk.so \
+    libzstd.so \
+    libapexsupport.so \
+    android.security.aaid_aidl-cpp.so
+do
+    if [ -f "$SYSLIB/$_lib" ] && [ ! -f "$RECLIB/$_lib" ]; then
+        cp "$SYSLIB/$_lib" "$RECLIB/$_lib"
+        echo "==> Copied $_lib to recovery ramdisk."
+        _need_repack=1
+    fi
+done
+if [ "$_need_repack" -eq 1 ]; then
+    echo "==> Repacking recovery image with injected libraries..."
     rm -f "$OUT_IMG"
     mka recoveryimage 2>&1 | tee -a "$LOG"
 fi

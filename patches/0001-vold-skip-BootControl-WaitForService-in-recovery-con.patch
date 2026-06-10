@@ -1,0 +1,42 @@
+From b297cf8b33a252ad2f208b4582fe315a1bf95644 Mon Sep 17 00:00:00 2001
+From: Ympax14 <ympax14@gmail.com>
+Date: Wed, 10 Jun 2026 16:11:01 +0200
+Subject: [PATCH] vold: skip BootControl WaitForService() in recovery context
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+cp_needsCheckpoint() calls BootControlClient::WaitForService() which
+calls AServiceManager_waitForService(). On NX779J the BootControl HAL
+is declared in the VINTF manifest but not started in recovery, so this
+blocks indefinitely — freezing /data metadata FBE mount after the
+dm-default-key device is created.
+
+Recovery never needs storage checkpointing; return false immediately
+after notifying checkpoint listeners, before the WaitForService() call.
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ Checkpoint.cpp | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/Checkpoint.cpp b/Checkpoint.cpp
+index 45835fc..e46bc22 100644
+--- a/Checkpoint.cpp
++++ b/Checkpoint.cpp
+@@ -306,6 +306,12 @@ bool cp_needsCheckpoint() {
+     if (needsCheckpointWasCalled) return isCheckpointing;
+     needsCheckpointWasCalled = true;
+ 
++    // In recovery the BootControl HAL is declared in VINTF but not started;
++    // WaitForService() would block indefinitely. Recovery never needs
++    // storage checkpointing, so return false unconditionally.
++    notifyCheckpointListeners();
++    return false;
++
+     bool ret;
+     std::string content;
+     auto module = BootControlClient::WaitForService();
+-- 
+2.54.0
+

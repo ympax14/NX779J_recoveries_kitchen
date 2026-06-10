@@ -1,0 +1,120 @@
+From d5ed6b71f8d1ff4ae238159f965c8d9c20125450 Mon Sep 17 00:00:00 2001
+From: Ympax14 <ympax14@gmail.com>
+Date: Wed, 10 Jun 2026 16:10:55 +0200
+Subject: [PATCH 2/2] NX779J: fix DRM master ownership and A/B boot-success on
+ system reboot
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+graphics_drm.cpp:
+- Open DRM fd with O_CLOEXEC so exec-inherited fd (PBRP splash→main
+  two-phase init) releases master before the new fd acquires it
+- Explicit drmSetMaster() with 50×20ms retry to handle the release race
+- Keep DRM_MODE_ATOMIC_ALLOW_MODESET in update_plane_fb(): QTI SDE
+  driver adds CRTC_ID connector property which requires it even for
+  page flips; removing the flag silently stops screen updates
+
+twrp-functions.cpp:
+- Call IBootControl::markBootSuccessful() before rb_system reboot so
+  the bootloader does not roll back to recovery when tries_remaining
+  reaches zero on an unmarked A/B slot
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+---
+ minuitwrp/graphics_drm.cpp | 22 ++++++++++++++++++----
+ twrp-functions.cpp         | 23 +++++++++++++++++++++++
+ 2 files changed, 41 insertions(+), 4 deletions(-)
+
+diff --git a/minuitwrp/graphics_drm.cpp b/minuitwrp/graphics_drm.cpp
+index 99ebd28..6022d5a 100644
+--- a/minuitwrp/graphics_drm.cpp
++++ b/minuitwrp/graphics_drm.cpp
+@@ -689,10 +689,8 @@ static void update_plane_fb() {
+     drmModeAtomicAddProperty(atomic_req, plane_res[i].plane->plane_id,
+                              fb_prop_id, drm_surfaces[current_buffer]->fb_id);
+ 
+-  /* Commit changes */
+   int32_t ret;
+-  ret = drmModeAtomicCommit(drm_fd, atomic_req,
+-                 DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
++  ret = drmModeAtomicCommit(drm_fd, atomic_req, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
+ 
+   drmModeAtomicFree(atomic_req);
+ 
+@@ -710,7 +708,7 @@ static GRSurface* drm_init(minui_backend* backend __unused) {
+     int ret = asprintf(&dev_name, DRM_DEV_NAME, DRM_DIR_NAME, i);
+     if (ret < 0) continue;
+ 
+-    drm_fd = open(dev_name, O_RDWR, 0);
++    drm_fd = open(dev_name, O_RDWR | O_CLOEXEC, 0);
+     free(dev_name);
+     if (drm_fd < 0) continue;
+ 
+@@ -743,6 +741,22 @@ static GRSurface* drm_init(minui_backend* backend __unused) {
+     return nullptr;
+   }
+ 
++  /* Explicitly acquire DRM master. On exec-restart (PBRP splash→main),
++   * the inherited pre-exec fd holds master; our new fd must claim it.
++   * Retry briefly to handle the race where the old fd is still being
++   * released by the kernel. */
++  {
++    int master_ret = -1;
++    for (int i = 0; i < 50 && master_ret < 0; i++) {
++      master_ret = drmSetMaster(drm_fd);
++      if (master_ret < 0) usleep(20000);
++    }
++    if (master_ret < 0)
++      printf("Warning: drmSetMaster failed: %s (will try anyway)\n", strerror(errno));
++    else
++      printf("DRM master acquired\n");
++  }
++
+   uint32_t selected_mode;
+   main_monitor_connector = find_main_monitor(drm_fd, res, &selected_mode);
+ 
+diff --git a/twrp-functions.cpp b/twrp-functions.cpp
+index 105f60d..9b37e1c 100644
+--- a/twrp-functions.cpp
++++ b/twrp-functions.cpp
+@@ -72,6 +72,12 @@ extern "C" {
+     #include <resetprop.hpp>
+ #endif
+ 
++#ifdef AB_OTA_UPDATER
++#include <android/hardware/boot/1.0/IBootControl.h>
++using android::hardware::boot::V1_0::CommandResult;
++using android::hardware::boot::V1_0::IBootControl;
++#endif
++
+ static const string tmp = "/tmp/pb/";
+ static const string ramdisk = tmp + "ramdisk/";
+ static const string split_img = tmp + "split_img/";
+@@ -654,6 +660,23 @@ int TWFunc::tw_reboot(RebootCommand command)
+ 		case rb_system:
+ 			Update_Intent_File("s");
+ 			sync();
++#ifdef AB_OTA_UPDATER
++			{
++				/* Mark the current slot as successfully booted so the bootloader
++				 * does not roll back to recovery after decrement of tries_remaining. */
++				android::sp<IBootControl> bc = IBootControl::getService();
++				if (bc != nullptr) {
++					CommandResult result;
++					auto ret = bc->markBootSuccessful([&result](const CommandResult &cb) { result = cb; });
++					if (!ret.isOk() || !result.success)
++						LOGINFO("markBootSuccessful failed: %s\n", result.errMsg.c_str());
++					else
++						LOGINFO("Marked current slot as successfully booted\n");
++				} else {
++					LOGINFO("IBootControl::getService() returned null, cannot mark boot successful\n");
++				}
++			}
++#endif
+ 			check_and_run_script("/system/bin/rebootsystem.sh", "reboot system");
+ #ifdef ANDROID_RB_PROPERTY
+ 			return property_set(ANDROID_RB_PROPERTY, "reboot,");
+-- 
+2.54.0
+
